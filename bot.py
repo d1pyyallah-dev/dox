@@ -3,7 +3,6 @@ import asyncio
 import aiohttp
 import os
 import json
-import subprocess
 from telethon import TelegramClient
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import User
@@ -28,15 +27,7 @@ LEAK_SOURCES = [
 
 async def search_github_dumps(username):
     async with aiohttp.ClientSession() as session:
-        dumps = [
-            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/telegram.txt',
-            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/phonenumbers.txt',
-            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/leaked.txt',
-            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/combos.txt',
-            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/mail.txt',
-            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/passwords.txt'
-        ]
-        for url in dumps:
+        for url in LEAK_SOURCES:
             try:
                 async with session.get(url, timeout=5) as resp:
                     if resp.status == 200:
@@ -56,9 +47,7 @@ async def search_breachcompilation(username):
             f'https://leak-lookup.com/api/search?key=public&query={username}',
             f'https://scylla.so/api/v1/search?q={username}',
             f'https://ghostproject.fr/api/search?username={username}',
-            f'https://intelx.io/api/search?q={username}',
-            f'https://api.dehashed.com/search?query=username:{username}',
-            f'https://leakcheck.io/api/v1/search?query={username}'
+            f'https://intelx.io/api/search?q={username}'
         ]
         for url in urls:
             try:
@@ -76,9 +65,7 @@ async def search_id_dbs(user_id):
     async with aiohttp.ClientSession() as session:
         urls = [
             f'https://api.tgstat.ru/users/{user_id}',
-            f'https://telescan.eu/api/public/v1/user/{user_id}',
-            f'https://tgsearch.ru/api/user/{user_id}',
-            f'https://telegram-index.ru/api/user/{user_id}'
+            f'https://telescan.eu/api/public/v1/user/{user_id}'
         ]
         for url in urls:
             try:
@@ -90,26 +77,6 @@ async def search_id_dbs(user_id):
                             return phone_match.group()
             except:
                 pass
-    return None
-
-async def search_leaker_cli(username):
-    try:
-        result = subprocess.run(
-            ['./leaker', '-j', 'username', username],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=os.getcwd()
-        )
-        if result.stdout:
-            data = json.loads(result.stdout)
-            for entry in data:
-                if 'phone' in str(entry).lower():
-                    phone_match = re.search(r'\+\d{11,15}', str(entry))
-                    if phone_match:
-                        return phone_match.group()
-    except:
-        pass
     return None
 
 async def get_phone(username):
@@ -131,9 +98,6 @@ async def get_phone(username):
             phone = await search_id_dbs(username)
             if phone:
                 return phone
-        phone = await search_leaker_cli(username)
-        if phone:
-            return phone
         return None
     except:
         return None
@@ -152,7 +116,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def main():
     await bot_app.bot.delete_webhook(drop_pending_updates=True)
-    await user_client.start()
+    try:
+        await user_client.start()
+    except:
+        if os.path.exists('session.session'):
+            os.remove('session.session')
+        await user_client.start()
     bot_app.add_handler(CommandHandler('start', start))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
     await bot_app.initialize()
