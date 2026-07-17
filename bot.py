@@ -1,15 +1,16 @@
 import re
 import asyncio
 import aiohttp
+import os
 from telethon import TelegramClient
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import User
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-API_ID = 2040
-API_HASH = 'b18441a1ff607e10a989891a5462e627'
-BOT_TOKEN = '8958853008:AAEee7acztBpPWX4QN0sV4IZVwEvFxH8mBs'
+API_ID = int(os.environ.get('API_ID', 2040))
+API_HASH = os.environ.get('API_HASH', 'b18441a1ff607e10a989891a5462e627')
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '8958853008:AAEee7acztBpPWX4QN0sV4IZVwEvFxH8mBs')
 
 user_client = TelegramClient('session', API_ID, API_HASH)
 bot_app = Application.builder().token(BOT_TOKEN).build()
