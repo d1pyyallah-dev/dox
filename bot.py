@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 import os
 import json
+import subprocess
 from telethon import TelegramClient
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import User
@@ -25,9 +26,17 @@ LEAK_SOURCES = [
     'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/leaked.txt'
 ]
 
-async def search_all_sources(username):
+async def search_github_dumps(username):
     async with aiohttp.ClientSession() as session:
-        for url in LEAK_SOURCES:
+        dumps = [
+            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/telegram.txt',
+            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/phonenumbers.txt',
+            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/leaked.txt',
+            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/combos.txt',
+            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/mail.txt',
+            'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/passwords.txt'
+        ]
+        for url in dumps:
             try:
                 async with session.get(url, timeout=5) as resp:
                     if resp.status == 200:
@@ -38,15 +47,20 @@ async def search_all_sources(username):
                                 return phone_match.group()
             except:
                 pass
-        # Публичные API
-        api_urls = [
+    return None
+
+async def search_breachcompilation(username):
+    async with aiohttp.ClientSession() as session:
+        urls = [
             f'https://api.leakcheck.net/public?query={username}',
             f'https://leak-lookup.com/api/search?key=public&query={username}',
             f'https://scylla.so/api/v1/search?q={username}',
             f'https://ghostproject.fr/api/search?username={username}',
-            f'https://intelx.io/api/search?q={username}'
+            f'https://intelx.io/api/search?q={username}',
+            f'https://api.dehashed.com/search?query=username:{username}',
+            f'https://leakcheck.io/api/v1/search?query={username}'
         ]
-        for url in api_urls:
+        for url in urls:
             try:
                 async with session.get(url, timeout=3) as resp:
                     if resp.status == 200:
@@ -56,21 +70,46 @@ async def search_all_sources(username):
                             return phone_match.group()
             except:
                 pass
-        # Поиск по ID (если передан ID)
-        if username.isdigit():
-            for url in [
-                f'https://api.tgstat.ru/users/{username}',
-                f'https://telescan.eu/api/public/v1/user/{username}'
-            ]:
-                try:
-                    async with session.get(url, timeout=3) as resp:
-                        if resp.status == 200:
-                            data = await resp.text()
-                            phone_match = re.search(r'\+\d{11,15}', data)
-                            if phone_match:
-                                return phone_match.group()
-                except:
-                    pass
+    return None
+
+async def search_id_dbs(user_id):
+    async with aiohttp.ClientSession() as session:
+        urls = [
+            f'https://api.tgstat.ru/users/{user_id}',
+            f'https://telescan.eu/api/public/v1/user/{user_id}',
+            f'https://tgsearch.ru/api/user/{user_id}',
+            f'https://telegram-index.ru/api/user/{user_id}'
+        ]
+        for url in urls:
+            try:
+                async with session.get(url, timeout=3) as resp:
+                    if resp.status == 200:
+                        data = await resp.text()
+                        phone_match = re.search(r'\+\d{11,15}', data)
+                        if phone_match:
+                            return phone_match.group()
+            except:
+                pass
+    return None
+
+async def search_leaker_cli(username):
+    try:
+        result = subprocess.run(
+            ['./leaker', '-j', 'username', username],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=os.getcwd()
+        )
+        if result.stdout:
+            data = json.loads(result.stdout)
+            for entry in data:
+                if 'phone' in str(entry).lower():
+                    phone_match = re.search(r'\+\d{11,15}', str(entry))
+                    if phone_match:
+                        return phone_match.group()
+    except:
+        pass
     return None
 
 async def get_phone(username):
@@ -82,8 +121,20 @@ async def get_phone(username):
         phone = getattr(full.full_user, 'phone', None) if hasattr(full, 'full_user') else None
         if phone:
             return phone
-        phone = await search_all_sources(username)
-        return phone
+        phone = await search_github_dumps(username)
+        if phone:
+            return phone
+        phone = await search_breachcompilation(username)
+        if phone:
+            return phone
+        if username.isdigit():
+            phone = await search_id_dbs(username)
+            if phone:
+                return phone
+        phone = await search_leaker_cli(username)
+        if phone:
+            return phone
+        return None
     except:
         return None
 
