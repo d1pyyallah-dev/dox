@@ -2,7 +2,6 @@ import re
 import asyncio
 import aiohttp
 import os
-import json
 from telethon import TelegramClient
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import User
@@ -11,74 +10,11 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 API_ID = int(os.environ.get('API_ID', 2040))
 API_HASH = os.environ.get('API_HASH', 'b18441a1ff607e10a989891a5462e627')
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '8958853008:AAEee7acztBpPWX4QN0sV4IZVwEvFxH8mBs')
-PHONE = os.environ.get('PHONE', '')
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+PHONE = os.environ.get('PHONE')
 
 user_client = TelegramClient('session', API_ID, API_HASH)
 bot_app = Application.builder().token(BOT_TOKEN).build()
-
-LEAK_SOURCES = [
-    'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/databases/leaks.json',
-    'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/databases/credit.json',
-    'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/databases/social.json',
-    'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/telegram.txt',
-    'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/phonenumbers.txt',
-    'https://raw.githubusercontent.com/Scriper1337/TelegramOSINT/main/dumps/leaked.txt'
-]
-
-async def search_github_dumps(username):
-    async with aiohttp.ClientSession() as session:
-        for url in LEAK_SOURCES:
-            try:
-                async with session.get(url, timeout=5) as resp:
-                    if resp.status == 200:
-                        content = await resp.text()
-                        if username.lower() in content.lower():
-                            phone_match = re.search(r'\+\d{11,15}', content)
-                            if phone_match:
-                                return phone_match.group()
-            except:
-                pass
-    return None
-
-async def search_breachcompilation(username):
-    async with aiohttp.ClientSession() as session:
-        urls = [
-            f'https://api.leakcheck.net/public?query={username}',
-            f'https://leak-lookup.com/api/search?key=public&query={username}',
-            f'https://scylla.so/api/v1/search?q={username}',
-            f'https://ghostproject.fr/api/search?username={username}',
-            f'https://intelx.io/api/search?q={username}'
-        ]
-        for url in urls:
-            try:
-                async with session.get(url, timeout=3) as resp:
-                    if resp.status == 200:
-                        data = await resp.text()
-                        phone_match = re.search(r'\+\d{11,15}', data)
-                        if phone_match:
-                            return phone_match.group()
-            except:
-                pass
-    return None
-
-async def search_id_dbs(user_id):
-    async with aiohttp.ClientSession() as session:
-        urls = [
-            f'https://api.tgstat.ru/users/{user_id}',
-            f'https://telescan.eu/api/public/v1/user/{user_id}'
-        ]
-        for url in urls:
-            try:
-                async with session.get(url, timeout=3) as resp:
-                    if resp.status == 200:
-                        data = await resp.text()
-                        phone_match = re.search(r'\+\d{11,15}', data)
-                        if phone_match:
-                            return phone_match.group()
-            except:
-                pass
-    return None
 
 async def get_phone(username):
     try:
@@ -89,31 +25,35 @@ async def get_phone(username):
         phone = getattr(full.full_user, 'phone', None) if hasattr(full, 'full_user') else None
         if phone:
             return phone
-        phone = await search_github_dumps(username)
-        if phone:
-            return phone
-        phone = await search_breachcompilation(username)
-        if phone:
-            return phone
-        if username.isdigit():
-            phone = await search_id_dbs(username)
-            if phone:
-                return phone
+        async with aiohttp.ClientSession() as session:
+            for url in [
+                f'https://api.leakcheck.net/public?query={username}',
+                f'https://leak-lookup.com/api/search?key=public&query={username}'
+            ]:
+                try:
+                    async with session.get(url, timeout=3) as resp:
+                        if resp.status == 200:
+                            data = await resp.text()
+                            match = re.search(r'\+\d{11,15}', data)
+                            if match:
+                                return match.group()
+                except:
+                    pass
         return None
     except:
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Отправь @username или ID')
+    await update.message.reply_text('Send @username or ID')
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
-    await update.message.reply_text(f'🔍 Ищу: {query}')
+    await update.message.reply_text(f'Searching: {query}')
     phone = await get_phone(query)
     if phone:
-        await update.message.reply_text(f'📱 Найден номер: {phone}')
+        await update.message.reply_text(f'📱 {phone}')
     else:
-        await update.message.reply_text('❌ Номер не найден в базах')
+        await update.message.reply_text('❌ Not found')
 
 async def main():
     await bot_app.bot.delete_webhook(drop_pending_updates=True)
